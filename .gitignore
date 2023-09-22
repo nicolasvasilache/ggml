@@ -1,3 +1,4 @@
+build-*/
 build/
 build-debug/
 build-release/
@@ -31,5 +32,7 @@ zig-cache/
 *.dot
 
 *.sw?
+
+*perf*
 
 __pycache__/
