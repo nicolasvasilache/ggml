@@ -254,6 +254,7 @@ add_library(${TARGET}
     ${GGML_CUDA_SOURCES}
     ${GGML_OPENCL_SOURCES}
     ${GGML_METAL_SOURCES}
+    /tmp/ggmlir.o
     )
 
 target_include_directories(${TARGET} PUBLIC
@@ -264,9 +265,11 @@ target_include_directories(${TARGET} PUBLIC
     )
 
 if (MSVC)
-    target_link_libraries(${TARGET} PUBLIC ${GGML_EXTRA_LIBS} ${CMAKE_THREAD_LIBS_INIT})
+    target_link_libraries(${TARGET} PUBLIC ${GGML_EXTRA_LIBS} ${CMAKE_THREAD_LIBS_INIT}
+    /usr/local/google/home/ntv/github/llvm-project/build/lib/libmlir_c_runner_utils.so)
 else()
-    target_link_libraries(${TARGET} PUBLIC m ${GGML_EXTRA_LIBS} ${CMAKE_THREAD_LIBS_INIT})
+    target_link_libraries(${TARGET} PUBLIC m ${GGML_EXTRA_LIBS} ${CMAKE_THREAD_LIBS_INIT}
+    /usr/local/google/home/ntv/github/llvm-project/build/lib/libmlir_c_runner_utils.so)
 endif()
 
 if (BUILD_SHARED_LIBS)

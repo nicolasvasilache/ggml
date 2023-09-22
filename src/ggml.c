@@ -1,5 +1,7 @@
 #define _CRT_SECURE_NO_DEPRECATE // Disables ridiculous "unsafe" warnigns on Windows
 
+#define USE_MLIR 1
+
 #include "ggml.h"
 
 #ifdef GGML_USE_K_QUANTS
@@ -1041,13 +1043,47 @@ static void quantize_row_q5_0(const float * restrict x, void * restrict y, int k
     quantize_row_q5_0_reference(x, y, k);
 }
 
-static void quantize_row_q5_1_reference(const float * restrict x, block_q5_1 * restrict y, int k) {
-    const int qk = QK5_1;
+#if USE_MLIR
+struct memref_1d {
+  void *alloc_ptr;
+  void *aligned_ptr;
+  int64_t offset; 
+  int64_t size; 
+  int64_t stride;
+};
 
-    assert(k % qk == 0);
+extern void _mlir_ciface_ggml_quantize_row_q5_1(struct memref_1d *y_out,
+                                                struct memref_1d *x,
+                                                struct memref_1d *y);
 
-    const int nb = k / qk;
+static void mlir_quantize_row_q5_1(const float *restrict x,
+                                   block_q5_1 *restrict y,
+                                   int k) {
+  struct memref_1d X;
+  X.alloc_ptr = x;
+  X.aligned_ptr = x;
+  X.offset = 0;
+  X.size = k;
+  X.stride = 1;
+  struct memref_1d Y;
+  Y.alloc_ptr = y;
+  Y.aligned_ptr = y;
+  Y.offset = 0;
+  Y.size = k;
+  Y.stride = 1;
+  _mlir_ciface_ggml_quantize_row_q5_1(&Y, &X, &Y);
+}
+#endif
 
+static void quantize_row_q5_1_reference(const float *restrict x,
+                                        block_q5_1 *restrict y, int k) {
+  const int qk = QK5_1;
+  assert(k % qk == 0);
+  const int nb = k / qk;
+
+#if USE_MLIR
+  mlir_quantize_row_q5_1(x, y, nb);
+#else
     for (int i = 0; i < nb; i++) {
         float min = FLT_MAX;
         float max = -FLT_MAX;
@@ -1083,6 +1119,7 @@ static void quantize_row_q5_1_reference(const float * restrict x, block_q5_1 * r
 
         memcpy(&y[i].qh, &qh, sizeof(y[i].qh));
     }
+#endif
 }
 
 static void quantize_row_q5_1(const float * restrict x, void * restrict y, int k) {
@@ -1560,13 +1597,39 @@ static void dequantize_row_q5_0(const block_q5_0 * restrict x, float * restrict 
     }
 }
 
-static void dequantize_row_q5_1(const block_q5_1 * restrict x, float * restrict y, int k) {
-    static const int qk = QK5_1;
+#if USE_MLIR
+extern void _mlir_ciface_ggml_dequantize_row_q5_1(struct memref_1d *y_out,
+                                                  struct memref_1d *x,
+                                                  struct memref_1d *y);
 
-    assert(k % qk == 0);
+static void mlir_dequantize_row_q5_1(const block_q5_1 *restrict x, 
+                                     float *restrict y,
+                                     int k) {
+  struct memref_1d X;
+  X.alloc_ptr = x;
+  X.aligned_ptr = x;
+  X.offset = 0;
+  X.size = k;
+  X.stride = 1;
+  struct memref_1d Y;
+  Y.alloc_ptr = y;
+  Y.aligned_ptr = y;
+  Y.offset = 0;
+  Y.size = k;
+  Y.stride = 1;
+  _mlir_ciface_ggml_dequantize_row_q5_1(&Y, &X, &Y);
+}
+#endif // USE_MLIR
 
-    const int nb = k / qk;
+static void dequantize_row_q5_1(const block_q5_1 *restrict x, float *restrict y,
+                                int k) {
+  static const int qk = QK5_1;
+  assert(k % qk == 0);
+  const int nb = k / qk;
 
+#if USE_MLIR
+  mlir_dequantize_row_q5_1(x, y, nb);
+#else
     for (int i = 0; i < nb; i++) {
         const float d = GGML_FP16_TO_FP32(x[i].d);
         const float m = GGML_FP16_TO_FP32(x[i].m);
@@ -1585,6 +1648,7 @@ static void dequantize_row_q5_1(const block_q5_1 * restrict x, float * restrict 
             y[i*qk + j + qk/2] = x1*d + m;
         }
     }
+#endif
 }
 
 static void dequantize_row_q8_0(const void * restrict vx, float * restrict y, int k) {
@@ -3177,6 +3241,37 @@ static void ggml_vec_dot_q5_0_q8_0(const int n, float * restrict s, const void *
 #endif
 }
 
+#if USE_MLIR
+extern void _mlir_ciface_ggml_vec_dot_q5_1_q8_1(struct memref_1d *s_out,
+                                                struct memref_1d *x,
+                                                struct memref_1d *y,
+                                                struct memref_1d *s);
+
+static void mlir_vec_dot_q5_1_q8_1(const block_q5_1 *restrict vx,
+                                   const block_q8_1 *restrict vy,
+                                   float *restrict s, int k) {
+  struct memref_1d X;
+  X.alloc_ptr = vx;
+  X.aligned_ptr = vx;
+  X.offset = 0;
+  X.size = k;
+  X.stride = 1;
+  struct memref_1d Y;
+  Y.alloc_ptr = vy;
+  Y.aligned_ptr = vy;
+  Y.offset = 0;
+  Y.size = k;
+  Y.stride = 1;
+  struct memref_1d S;
+  S.alloc_ptr = s;
+  S.aligned_ptr = s;
+  S.offset = 0;
+  S.size = 1; // single float is updated here
+  S.stride = 1;
+  _mlir_ciface_ggml_vec_dot_q5_1_q8_1(&S, &X, &Y, &S);
+}
+#endif // USE_MLIR
+
 static void ggml_vec_dot_q5_1_q8_1(const int n, float * restrict s, const void * restrict vx, const void * restrict vy) {
     const int qk = QK8_1;
     const int nb = n / qk;
@@ -3187,6 +3282,9 @@ static void ggml_vec_dot_q5_1_q8_1(const int n, float * restrict s, const void *
     const block_q5_1 * restrict x = vx;
     const block_q8_1 * restrict y = vy;
 
+#if USE_MLIR
+    mlir_vec_dot_q5_1_q8_1( vx, vy, s, nb);
+#else
 #if defined(__ARM_NEON)
     float32x4_t sumv0 = vdupq_n_f32(0.0f);
     float32x4_t sumv1 = vdupq_n_f32(0.0f);
@@ -3497,6 +3595,8 @@ static void ggml_vec_dot_q5_1_q8_1(const int n, float * restrict s, const void *
 
     *s = sumf;
 #endif
+
+#endif // USE_MLIR
 }
 
 static void ggml_vec_dot_q8_0_q8_0(const int n, float * restrict s, const void * restrict vx, const void * restrict vy) {
